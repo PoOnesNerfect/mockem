@@ -1,8 +1,14 @@
-Mock any function types in Rust.
+# Mock'em
+
+Mock any function in Rust.
 
 Make sure to only use this crate for testing purposes, as it will add a lot of overhead to your code.
 
 ## Basic Usage
+
+[<img alt="github" src="https://img.shields.io/badge/github-poonesnerfect/mockem-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/poonesnerfect/mockem)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/mockem.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/mockem)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-mockem-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/mockem)
 
 On the function you want to mock, add the `#[mock]` attribute.
 
