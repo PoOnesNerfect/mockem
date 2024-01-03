@@ -1,0 +1,15 @@
+[package]
+name = "mockem"
+version = "0.1.0"
+edition = "2021"
+description = "mock'em functions!"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mockem-derive = { version = "0.1.0", path = "derive" }
+
+[dev-dependencies]
+async-trait = { version = "0.1" }
+tokio = { version = "1", features = ["test-util", "macros"]}
+tracing = { version = "0.1" }
