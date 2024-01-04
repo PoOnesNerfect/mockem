@@ -163,7 +163,7 @@ impl MockStore {
         self.mocks.borrow_mut().clear()
     }
 
-    pub unsafe fn add(&self, id: TypeId, value: MockReturn) {
+    pub fn add(&self, id: TypeId, value: MockReturn) {
         {
             if let Some(returns) = self.mocks.borrow_mut().get_mut(&id) {
                 returns.push_back(value);
@@ -217,43 +217,35 @@ pub struct __NotFuture;
 
 impl<O: Any, F: Fn() -> O + 'static> MockCall<(), O, __NotFuture> for F {
     fn mock_ret(&self, ret: O) {
-        unsafe {
-            MOCK_STORE.with(|mock_store| {
-                mock_store.add(self.get_mock_id(), MockReturn::new(ret));
-            });
-        }
+        MOCK_STORE.with(|mock_store| {
+            mock_store.add(self.get_mock_id(), MockReturn::new(ret));
+        });
     }
 
     fn mock_continue(&self) {
-        unsafe {
-            MOCK_STORE.with(|mock_store| {
-                mock_store.add(self.get_mock_id(), MockReturn::Continue);
-            });
-        }
+        MOCK_STORE.with(|mock_store| {
+            mock_store.add(self.get_mock_id(), MockReturn::Continue);
+        });
     }
 }
 
 impl<O: Any, F: Fn() -> Fut + 'static, Fut: Future<Output = O>> MockCall<(), O, Fut> for F {
     fn mock_ret(&self, ret: O) {
-        unsafe {
-            MOCK_STORE.with(|mock_store| {
-                mock_store.add(
-                    <Self as MockCall<(), O, Fut>>::get_mock_id(self),
-                    MockReturn::new(ret),
-                );
-            });
-        }
+        MOCK_STORE.with(|mock_store| {
+            mock_store.add(
+                <Self as MockCall<(), O, Fut>>::get_mock_id(self),
+                MockReturn::new(ret),
+            );
+        });
     }
 
     fn mock_continue(&self) {
-        unsafe {
-            MOCK_STORE.with(|mock_store| {
-                mock_store.add(
-                    <Self as MockCall<(), O, Fut>>::get_mock_id(self),
-                    MockReturn::Continue,
-                );
-            });
-        }
+        MOCK_STORE.with(|mock_store| {
+            mock_store.add(
+                <Self as MockCall<(), O, Fut>>::get_mock_id(self),
+                MockReturn::Continue,
+            );
+        });
     }
 }
 
@@ -279,19 +271,15 @@ macro_rules! impl_mock_call {
     ($($T:ident),*) => {
         impl<$($T),*, O: Any, F: Fn($($T),*) -> O + 'static> MockCall<($($T,)*), O, __NotFuture> for F {
             fn mock_ret(&self, ret: O) {
-                unsafe {
-                    MOCK_STORE.with(|mock_store| {
-                        mock_store.add(self.get_mock_id(), MockReturn::new(ret));
-                    });
-                }
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(self.get_mock_id(), MockReturn::new(ret));
+                });
             }
 
             fn mock_continue(&self) {
-                unsafe {
-                    MOCK_STORE.with(|mock_store| {
-                        mock_store.add(self.get_mock_id(), MockReturn::Continue);
-                    });
-                }
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(self.get_mock_id(), MockReturn::Continue);
+                });
             }
         }
     }
@@ -303,19 +291,15 @@ macro_rules! impl_mock_async_call {
     ($($T:ident),*) => {
         impl<$($T),*, O: Any, F: Fn($($T),*) -> Fut, Fut: Future<Output = O>> MockCall<($($T,)*), O, Fut> for F {
             fn mock_ret(&self, ret: O) {
-                unsafe {
-                    MOCK_STORE.with(|mock_store| {
-                        mock_store.add(<Self as MockCall<_, O, Fut>>::get_mock_id(self), MockReturn::new(ret));
-                    });
-                }
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(<Self as MockCall<_, O, Fut>>::get_mock_id(self), MockReturn::new(ret));
+                });
             }
 
             fn mock_continue(&self) {
-                unsafe {
-                    MOCK_STORE.with(|mock_store| {
-                        mock_store.add(<Self as MockCall<_, O, Fut>>::get_mock_id(self), MockReturn::Continue);
-                    });
-                }
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(<Self as MockCall<_, O, Fut>>::get_mock_id(self), MockReturn::Continue);
+                });
             }
         }
     }
