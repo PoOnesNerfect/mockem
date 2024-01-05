@@ -1,6 +1,6 @@
 [package]
 name = "mockem"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 authors = ["Jack Lee <jack.y.l.dev@gmail.com>"]
 description = "mock'em functions!"
@@ -14,7 +14,7 @@ rust-version = "1.56"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mockem-derive = { version = "0.1.0", path = "derive" }
+mockem-derive = { version = "0.2.0", path = "derive" }
 
 [dev-dependencies]
 async-trait = { version = "0.1" }

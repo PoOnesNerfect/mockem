@@ -22,7 +22,7 @@ async fn baz() -> String {
 
 #[tokio::test]
 async fn test_async_trait() {
-    <Foo as Bar>::bar.mock_ret("mockem".to_owned());
+    <Foo as Bar>::bar.mock_ret(|_| "mockem".to_owned());
 
     assert_eq!(&baz().await, "Hello, mockem!");
 }

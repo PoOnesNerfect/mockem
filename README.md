@@ -14,28 +14,63 @@ On the function you want to mock, add the `#[mock]` attribute.
 
 ```rust
 #[cfg_attr(test, mockem::mock)]
-fn foo() -> String {
-    format!("foo")
+fn foo(a: &str) -> String {
+    format!("{a}")
 }
 
 fn bar() -> String {
-    format!("Hello, {}!", foo())
+    format!("Hello, {}!", foo("bar"))
 }
 
 #[test]
 fn test_fn() {
     use mockem::MockCall;
-    
-    foo.mock_ret("mockem".to_owned());
-    foo.mock_continue();
-    foo.mock_ret("mockem2".to_owned());
-    
-    assert_eq!(&bar(), "Hello, mockem!");
-    assert_eq!(&bar(), "Hello, foo!");
-    assert_eq!(&bar(), "Hello, mockem2!");
-    assert_eq!(&bar(), "Hello, foo!");
+
+    foo.mock_ret(|a| format!("mocked {a}"));
+
+    assert_eq!(&bar(), "Hello, mocked bar!");
+
+    // function works normally after mock return value is returned
+    assert_eq!(&bar(), "Hello, bar!");
 }
 ```
+
+### Mocking indefinitely
+
+By default, the mock will only return the mocked value once.
+If you want to have your mock return the mocked value indefinitely, you can use a recursive function:
+
+```rust
+#[cfg_attr(test, mockem::mock)]
+fn foo(a: &str) -> String {
+    format!("{a}")
+}
+
+fn bar(a: &str) -> String {
+    format!("Hello, {}!", foo(a))
+}
+
+#[test]
+fn test_fn() {
+    use mockem::{MockCall, ClearMocks};
+
+    fn f(a: &str) -> String {
+        foo.mock_ret(f);
+        format!("mocked {a}")
+    }
+    foo.mock_ret(f);
+
+    assert_eq!(&bar("bar"), "Hello, mocked bar!");
+    assert_eq!(&bar("foo"), "Hello, mocked foo!");
+    assert_eq!(&bar("baz"), "Hello, mocked baz!");
+
+    // this clears all mocks, which will stop the indeifinite recursion
+    foo.clear_mocks();
+
+    assert_eq!(&bar("baz"), "Hello, baz!");
+}
+```
+
 
 ## Impl Blocks
 
@@ -72,10 +107,10 @@ fn bar() -> String {
 #[test]
 fn test_fn() {
     use mockem::MockCall;
-    
-    Foo::foo.mock_ret("mockem".to_owned());
-    Foo::baz.mock_ret("mockem2".to_owned());
-    
+
+    Foo::foo.mock_ret(|_| "mockem".to_owned());
+    Foo::baz.mock_ret(|_| "mockem2".to_owned());
+
     assert_eq!(&bar(), "Hello, mockem and mockem2!");
 }
 ```
@@ -119,8 +154,8 @@ async fn bar() -> String {
 fn test_fn() {
     use mockem::MockCall;
     
-    Foo::foo.mock_ret("mockem".to_owned());
-    Foo::baz.mock_ret("mockem2".to_owned());
+    Foo::foo.mock_ret(|_| "mockem".to_owned());
+    Foo::baz.mock_ret(|_| "mockem2".to_owned());
     
     assert_eq!(&bar().await, "Hello, mockem and mockem2!");
 }
