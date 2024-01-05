@@ -26,7 +26,11 @@ impl MockStore {
     }
 
     pub(crate) fn mock_exists(&self, id: TypeId) -> bool {
-        self.mocks.borrow().contains_key(&id)
+        self.mocks
+            .borrow()
+            .get(&id)
+            .map(|m| !m.is_empty())
+            .unwrap_or(false)
     }
 
     pub(crate) fn get(&self, id: TypeId) -> Option<MockReturn> {
