@@ -1,7 +1,7 @@
 //! Mock any function types in Rust.
 //!
 //! Make sure to only use this crate for testing purposes, as it will add a lot of overhead to your code.
-//! `.mock_ret(..)` expects a closure that takes the arguments of the function and returns the same return type as the function.
+//! `.mock_once(..)` expects a closure that takes the arguments of the function and returns the same return type as the function.
 //!
 //! ## Basic Usage
 //!
@@ -21,8 +21,8 @@
 //! fn test_fn() {
 //!     use mockem::MockCall;
 //!
-//!     foo.mock_ret(|| "mockem".to_owned());
-//!     foo.mock_ret(|| "mockem2".to_owned());
+//!     foo.mock_once(|| "mockem".to_owned());
+//!     foo.mock_once(|| "mockem2".to_owned());
 //!
 //!     assert_eq!(&bar(), "Hello, mockem!");
 //!     assert_eq!(&bar(), "Hello, mockem2!");
@@ -32,10 +32,14 @@
 //! }
 //! ```
 //!
-//! ### Mocking indefinitely
+//! ### Mocking Repeatedly
 //!
-//! By default, the mock will only return the mocked value once.
-//! If you want to have your mock return the mocked value indefinitely, you can use a recursive function:
+//! If you want to mock a function more than once or indefinitely, use `mock_repeat` instead of `mock_once`.
+//!
+//! `mock_repeat` takes an `Option<usize>` as its first argument, which is the number of times to mock the function;
+//!
+//! `None` means to mock the function indefinitely.
+//!
 //!
 //! ```rust
 //! #[cfg_attr(test, mockem::mock)]
@@ -51,22 +55,19 @@
 //! fn test_fn() {
 //!     use mockem::{MockCall, ClearMocks};
 //!
-//!     fn f(a: &str) -> String {
-//!         foo.mock_ret(f);
-//!         format!("mocked {a}")
-//!     }
-//!     foo.mock_ret(f);
+//!     foo.mock_repeat(None, |a| format!("mocked {a}"));
 //!
 //!     assert_eq!(&bar("bar"), "Hello, mocked bar!");
 //!     assert_eq!(&bar("foo"), "Hello, mocked foo!");
 //!     assert_eq!(&bar("baz"), "Hello, mocked baz!");
 //!
-//!     // this clears all mocks, which will stop the indeifinite recursion
+//!     // this clears all mocks, which will stop the indefinite mock
 //!     foo.clear_mocks();
 //!
 //!     assert_eq!(&bar("baz"), "Hello, baz!");
 //! }
 //! ```
+//!
 //!
 //!
 //! ## Impl Blocks
@@ -105,8 +106,8 @@
 //! fn test_fn() {
 //!     use mockem::MockCall;
 //!
-//!     Foo::foo.mock_ret(|_| "mockem".to_owned());
-//!     Foo::baz.mock_ret(|_| "mockem2".to_owned());
+//!     Foo::foo.mock_once(|_| "mockem".to_owned());
+//!     Foo::baz.mock_once(|_| "mockem2".to_owned());
 //!
 //!     assert_eq!(&bar(), "Hello, mockem and mockem2!");
 //! }
@@ -151,8 +152,8 @@
 //! fn test_fn() {
 //!     use mockem::MockCall;
 //!
-//!     Foo::foo.mock_ret(|_| "mockem".to_owned());
-//!     Foo::baz.mock_ret(|_| "mockem2".to_owned());
+//!     Foo::foo.mock_once(|_| "mockem".to_owned());
+//!     Foo::baz.mock_once(|_| "mockem2".to_owned());
 //!
 //!     assert_eq!(&bar().await, "Hello, mockem and mockem2!");
 //! }
@@ -181,7 +182,7 @@ pub fn clear_mocks() {
 }
 
 #[doc(hidden)]
-pub struct MockReturn(Rc<Box<dyn FnMut() -> ()>>);
+pub struct MockReturn(Rc<Box<dyn FnMut() -> ()>>, Option<usize>);
 
 /// Auto-implemented trait for mocking return values of functions.
 ///
@@ -195,7 +196,8 @@ pub struct MockReturn(Rc<Box<dyn FnMut() -> ()>>);
 pub trait MockCall<I, O, W, Fut>: CallMock<I, O, Fut> {
     /// Mock the return value of this function.
     /// This expects a closure with the arguments of the function.
-    fn mock_ret(&self, with: W);
+    fn mock_once(&self, with: W);
+    fn mock_repeat(&self, repeat: Option<usize>, with: W);
 }
 
 /// Clear all mocked return values related to this function.
@@ -228,12 +230,21 @@ pub trait CallMock<I, O, Fut> {
 pub struct NotFuture;
 
 impl<O, W: FnMut() -> O + 'static, F: Fn() -> O> MockCall<(), O, W, NotFuture> for F {
-    fn mock_ret(&self, with: W) {
+    fn mock_once(&self, with: W) {
         let erased: Box<dyn FnMut() -> O + 'static> = Box::new(with);
         let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
 
         MOCK_STORE.with(|mock_store| {
-            mock_store.add(self.get_mock_id(), MockReturn(transmuted));
+            mock_store.add(self.get_mock_id(), MockReturn(transmuted, Some(1)));
+        });
+    }
+
+    fn mock_repeat(&self, repeat: Option<usize>, with: W) {
+        let erased: Box<dyn FnMut() -> O + 'static> = Box::new(with);
+        let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
+
+        MOCK_STORE.with(|mock_store| {
+            mock_store.add(self.get_mock_id(), MockReturn(transmuted, repeat));
         });
     }
 }
@@ -242,11 +253,28 @@ impl<O, F: Fn() -> O> CallMock<(), O, NotFuture> for F {
     fn call_mock(&self, _: ()) -> O {
         let id = self.get_mock_id();
 
-        if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
+        if let Some(MockReturn(with, repeat)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
             let with: Rc<Box<dyn FnMut() -> O + 'static>> = unsafe { transmute(with) };
-            Rc::into_inner(with)
-                .map(|mut f| f())
-                .expect("mock should exist")
+            let mut boxed = Rc::into_inner(with).expect("mock should exist");
+            let ret = boxed();
+
+            if let Some(repeat) = repeat {
+                if repeat > 1 {
+                    let transmuted: Rc<Box<dyn FnMut() -> ()>> =
+                        unsafe { transmute(Rc::new(boxed)) };
+                    MOCK_STORE.with(|mock_store| {
+                        mock_store
+                            .add(self.get_mock_id(), MockReturn(transmuted, Some(repeat - 1)));
+                    });
+                }
+            } else {
+                let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(boxed)) };
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(self.get_mock_id(), MockReturn(transmuted, None));
+                });
+            }
+
+            ret
         } else {
             panic!("mock should exist")
         }
@@ -256,14 +284,26 @@ impl<O, F: Fn() -> O> CallMock<(), O, NotFuture> for F {
 impl<O, W: FnMut() -> O + 'static, F: Fn() -> Fut + 'static, Fut: Future<Output = O>>
     MockCall<(), O, W, Fut> for F
 {
-    fn mock_ret(&self, f: W) {
+    fn mock_once(&self, f: W) {
         let erased: Box<dyn FnMut() -> O + 'static> = Box::new(f);
         let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
 
         MOCK_STORE.with(|mock_store| {
             mock_store.add(
                 <Self as CallMock<(), O, Fut>>::get_mock_id(self),
-                MockReturn(transmuted),
+                MockReturn(transmuted, Some(1)),
+            );
+        });
+    }
+
+    fn mock_repeat(&self, repeat: Option<usize>, with: W) {
+        let erased: Box<dyn FnMut() -> O + 'static> = Box::new(with);
+        let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
+
+        MOCK_STORE.with(|mock_store| {
+            mock_store.add(
+                <Self as CallMock<(), O, Fut>>::get_mock_id(self),
+                MockReturn(transmuted, repeat),
             );
         });
     }
@@ -273,11 +313,33 @@ impl<O, F: Fn() -> Fut, Fut: Future<Output = O>> CallMock<(), O, Fut> for F {
     fn call_mock(&self, _: ()) -> O {
         let id = <Self as CallMock<(), O, Fut>>::get_mock_id(self);
 
-        if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
+        if let Some(MockReturn(with, repeat)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
             let with: Rc<Box<dyn FnMut() -> O + 'static>> = unsafe { transmute(with) };
-            Rc::into_inner(with)
-                .map(|mut f| f())
-                .expect("mock should exist")
+            let mut boxed = Rc::into_inner(with).expect("mock should exist");
+            let ret = boxed();
+
+            if let Some(repeat) = repeat {
+                if repeat > 1 {
+                    let transmuted: Rc<Box<dyn FnMut() -> ()>> =
+                        unsafe { transmute(Rc::new(boxed)) };
+                    MOCK_STORE.with(|mock_store| {
+                        mock_store.add(
+                            <Self as CallMock<(), O, Fut>>::get_mock_id(self),
+                            MockReturn(transmuted, Some(repeat - 1)),
+                        );
+                    });
+                }
+            } else {
+                let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(boxed)) };
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(
+                        <Self as CallMock<(), O, Fut>>::get_mock_id(self),
+                        MockReturn(transmuted, None),
+                    );
+                });
+            }
+
+            ret
         } else {
             panic!("mock should exist")
         }
@@ -307,14 +369,26 @@ macro_rules! impl_mock_call {
         impl<$($T),*, O, W: FnMut($($T),*) -> O + 'static, F: Fn($($T),*) -> O> MockCall<($($T,)*), O, W, NotFuture>
             for F
         {
-            fn mock_ret(&self, f: W) {
+            fn mock_once(&self, f: W) {
                 let erased: Box<dyn FnMut($($T),*) -> O + 'static> = Box::new(f);
                 let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
 
                 MOCK_STORE.with(|mock_store| {
                     mock_store.add(
                         <Self as CallMock<($($T,)*), O, NotFuture>>::get_mock_id(self),
-                        MockReturn(transmuted),
+                        MockReturn(transmuted, Some(1)),
+                    );
+                });
+            }
+
+            fn mock_repeat(&self, repeat: Option<usize>, with: W) {
+                let erased: Box<dyn FnMut($($T),*) -> O + 'static> = Box::new(with);
+                let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
+
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(
+                        <Self as CallMock<($($T,)*), O, NotFuture>>::get_mock_id(self),
+                        MockReturn(transmuted, repeat),
                     );
                 });
             }
@@ -327,9 +401,33 @@ macro_rules! impl_mock_call {
             fn call_mock(&self, ($($T,)*): ($($T,)*)) -> O {
                 let id = <Self as CallMock<($($T,)*), O, NotFuture>>::get_mock_id(self);
 
-                if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
+                if let Some(MockReturn(with, repeat)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
                     let with: Rc<Box<dyn FnMut($($T),*) -> O + 'static>> = unsafe { transmute(with) };
-                    Rc::into_inner(with).map(|mut f| f($($T),*)).expect("mock should exist")
+                    let mut boxed = Rc::into_inner(with).expect("mock should exist");
+                    let ret = boxed($($T),*);
+
+                    if let Some(repeat) = repeat {
+                        if repeat > 1 {
+                            let transmuted: Rc<Box<dyn FnMut() -> ()>> =
+                                unsafe { transmute(Rc::new(boxed)) };
+                            MOCK_STORE.with(|mock_store| {
+                                mock_store.add(
+                                    <Self as CallMock<($($T,)*), O, NotFuture>>::get_mock_id(self),
+                                    MockReturn(transmuted, Some(repeat - 1)),
+                                );
+                            });
+                        }
+                    } else {
+                        let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(boxed)) };
+                        MOCK_STORE.with(|mock_store| {
+                            mock_store.add(
+                                <Self as CallMock<($($T,)*), O, NotFuture>>::get_mock_id(self),
+                                MockReturn(transmuted, None),
+                            );
+                        });
+                    }
+
+                    ret
                 } else {
                     panic!("mock should exist")
                 }
@@ -344,14 +442,26 @@ macro_rules! impl_mock_async_call {
         impl<$($T),*, O, W: FnMut($($T),*) -> O + 'static, F: Fn($($T),*) -> Fut, Fut: Future<Output = O>> MockCall<($($T,)*), O, W, Fut>
             for F
         {
-            fn mock_ret(&self, f: W) {
+            fn mock_once(&self, f: W) {
                 let erased: Box<dyn FnMut($($T),*) -> O + 'static> = Box::new(f);
                 let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
 
                 MOCK_STORE.with(|mock_store| {
                     mock_store.add(
                         <Self as CallMock<($($T,)*), O, Fut>>::get_mock_id(self),
-                        MockReturn(transmuted),
+                        MockReturn(transmuted, Some(1)),
+                    );
+                });
+            }
+
+            fn mock_repeat(&self, repeat: Option<usize>, with: W) {
+                let erased: Box<dyn FnMut($($T),*) -> O + 'static> = Box::new(with);
+                let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
+
+                MOCK_STORE.with(|mock_store| {
+                    mock_store.add(
+                        <Self as CallMock<($($T,)*), O, Fut>>::get_mock_id(self),
+                        MockReturn(transmuted, repeat),
                     );
                 });
             }
@@ -364,9 +474,33 @@ macro_rules! impl_mock_async_call {
             fn call_mock(&self, ($($T,)*): ($($T,)*)) -> O {
                 let id = <Self as CallMock<($($T,)*), O, Fut>>::get_mock_id(self);
 
-                if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
+                if let Some(MockReturn(with, repeat)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
                     let with: Rc<Box<dyn FnMut($($T),*) -> O + 'static>> = unsafe { transmute(with) };
-                    Rc::into_inner(with).map(|mut f| f($($T),*)).expect("mock should exist")
+                    let mut boxed = Rc::into_inner(with).expect("mock should exist");
+                    let ret = boxed($($T),*);
+
+                    if let Some(repeat) = repeat {
+                        if repeat > 1 {
+                            let transmuted: Rc<Box<dyn FnMut() -> ()>> =
+                                unsafe { transmute(Rc::new(boxed)) };
+                            MOCK_STORE.with(|mock_store| {
+                                mock_store.add(
+                                    <Self as CallMock<($($T,)*), O, Fut>>::get_mock_id(self),
+                                    MockReturn(transmuted, Some(repeat - 1)),
+                                );
+                            });
+                        }
+                    } else {
+                        let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(boxed)) };
+                        MOCK_STORE.with(|mock_store| {
+                            mock_store.add(
+                                <Self as CallMock<($($T,)*), O, Fut>>::get_mock_id(self),
+                                MockReturn(transmuted, None),
+                            );
+                        });
+                    }
+
+                    ret
                 } else {
                     panic!("mock should exist")
                 }

@@ -15,7 +15,7 @@ impl Foo {
 
 #[tokio::test]
 async fn test_async() {
-    foo.mock_ret(|| "mockem".to_owned());
+    foo.mock_once(|| "mockem".to_owned());
 
     assert_eq!(&Foo.bar().await, "Hello, mockem!");
 }

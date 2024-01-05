@@ -26,7 +26,7 @@ fn bar() -> String {
 fn test_fn() {
     use mockem::MockCall;
 
-    foo.mock_ret(|a| format!("mocked {a}"));
+    foo.mock_once(|a| format!("mocked {a}"));
 
     assert_eq!(&bar(), "Hello, mocked bar!");
 
@@ -35,10 +35,14 @@ fn test_fn() {
 }
 ```
 
-### Mocking indefinitely
+### Mocking Repeatedly
 
-By default, the mock will only return the mocked value once.
-If you want to have your mock return the mocked value indefinitely, you can use a recursive function:
+If you want to mock a function more than once or indefinitely, use `mock_repeat` instead of `mock_once`.
+
+`mock_repeat` takes an `Option<usize>` as its first argument, which is the number of times to mock the function;
+
+`None` means to mock the function indefinitely.
+
 
 ```rust
 #[cfg_attr(test, mockem::mock)]
@@ -54,17 +58,13 @@ fn bar(a: &str) -> String {
 fn test_fn() {
     use mockem::{MockCall, ClearMocks};
 
-    fn f(a: &str) -> String {
-        foo.mock_ret(f);
-        format!("mocked {a}")
-    }
-    foo.mock_ret(f);
+    foo.mock_repeat(None, |a| format!("mocked {a}"));
 
     assert_eq!(&bar("bar"), "Hello, mocked bar!");
     assert_eq!(&bar("foo"), "Hello, mocked foo!");
     assert_eq!(&bar("baz"), "Hello, mocked baz!");
 
-    // this clears all mocks, which will stop the indeifinite recursion
+    // this clears all mocks, which will stop the indefinite mock
     foo.clear_mocks();
 
     assert_eq!(&bar("baz"), "Hello, baz!");
@@ -108,8 +108,8 @@ fn bar() -> String {
 fn test_fn() {
     use mockem::MockCall;
 
-    Foo::foo.mock_ret(|_| "mockem".to_owned());
-    Foo::baz.mock_ret(|_| "mockem2".to_owned());
+    Foo::foo.mock_once(|_| "mockem".to_owned());
+    Foo::baz.mock_once(|_| "mockem2".to_owned());
 
     assert_eq!(&bar(), "Hello, mockem and mockem2!");
 }
@@ -154,8 +154,8 @@ async fn bar() -> String {
 fn test_fn() {
     use mockem::MockCall;
     
-    Foo::foo.mock_ret(|_| "mockem".to_owned());
-    Foo::baz.mock_ret(|_| "mockem2".to_owned());
+    Foo::foo.mock_once(|_| "mockem".to_owned());
+    Foo::baz.mock_once(|_| "mockem2".to_owned());
     
     assert_eq!(&bar().await, "Hello, mockem and mockem2!");
 }

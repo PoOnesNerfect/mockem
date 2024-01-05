@@ -1,6 +1,6 @@
 [package]
 name = "mockem"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["Jack Lee <jack.y.l.dev@gmail.com>"]
 description = "mock'em functions!"

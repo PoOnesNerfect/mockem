@@ -15,11 +15,18 @@ impl Foo {
 
 #[test]
 fn test_fn() {
-    fn f() -> String {
-        foo.mock_ret(f);
-        "mockem".to_owned()
+    let mut c = 4;
+    {
+        foo.mock_repeat(None, move || {
+            if c > 0 {
+                c -= 1;
+                println!("c: {c}");
+            }
+            "mockem".to_owned()
+        });
     }
-    foo.mock_ret(f);
+
+    println!("here c: {c}");
 
     assert_eq!(&Foo.bar(), "Hello, mockem!");
     assert_eq!(&Foo.bar(), "Hello, mockem!");
@@ -28,6 +35,8 @@ fn test_fn() {
     assert_eq!(&Foo.bar(), "Hello, mockem!");
     assert_eq!(&Foo.bar(), "Hello, mockem!");
     assert_eq!(&Foo.bar(), "Hello, mockem!");
+
+    println!("here c: {c}");
 
     // clears mocks for `foo`
     foo.clear_mocks();
@@ -42,10 +51,10 @@ fn trim(s: &str) -> &str {
 
 #[test]
 fn test_ref() {
-    trim.mock_ret(|a| a.trim_start_matches("s"));
+    trim.mock_once(|a| a.trim_start_matches("s"));
 
     let b = "bar";
-    trim.mock_ret(|_| b);
+    trim.mock_once(|_| b);
 
     assert_eq!(trim("star"), "tar");
     assert_eq!(trim("star"), "bar");

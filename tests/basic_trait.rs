@@ -19,7 +19,7 @@ fn baz() -> String {
 
 #[test]
 fn test_trait() {
-    <Foo as Bar>::bar.mock_ret(|_| "mockem".to_owned());
+    <Foo as Bar>::bar.mock_once(|_| "mockem".to_owned());
 
     assert_eq!(&baz(), "Hello, mockem!");
 }
