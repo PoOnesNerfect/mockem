@@ -161,6 +161,7 @@
 use std::{
     any::{Any, TypeId},
     future::Future,
+    marker::PhantomData,
     mem::transmute,
     rc::Rc,
 };
@@ -210,7 +211,13 @@ impl<I, O, Fut, F: CallMock<I, O, Fut>> ClearMocks<I, O, Fut> for F {}
 
 #[doc(hidden)]
 pub trait CallMock<I, O, Fut> {
-    fn call_mock(&self, input: I) -> Option<O>;
+    fn mock_exists(&self, _ret: PhantomData<O>) -> bool {
+        let id = self.get_mock_id();
+
+        MOCK_STORE.with(|mock_store| mock_store.mock_exists(id))
+    }
+
+    fn call_mock(&self, input: I) -> O;
 
     fn get_mock_id(&self) -> TypeId {
         (|| ()).type_id()
@@ -232,14 +239,16 @@ impl<O, W: FnMut() -> O + 'static, F: Fn() -> O> MockCall<(), O, W, NotFuture> f
 }
 
 impl<O, F: Fn() -> O> CallMock<(), O, NotFuture> for F {
-    fn call_mock(&self, _: ()) -> Option<O> {
+    fn call_mock(&self, _: ()) -> O {
         let id = self.get_mock_id();
 
         if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
             let with: Rc<Box<dyn FnMut() -> O + 'static>> = unsafe { transmute(with) };
-            Rc::into_inner(with).map(|mut f| f())
+            Rc::into_inner(with)
+                .map(|mut f| f())
+                .expect("mock should exist")
         } else {
-            None
+            panic!("mock should exist")
         }
     }
 }
@@ -261,14 +270,16 @@ impl<O, W: FnMut() -> O + 'static, F: Fn() -> Fut + 'static, Fut: Future<Output 
 }
 
 impl<O, F: Fn() -> Fut, Fut: Future<Output = O>> CallMock<(), O, Fut> for F {
-    fn call_mock(&self, _: ()) -> Option<O> {
+    fn call_mock(&self, _: ()) -> O {
         let id = <Self as CallMock<(), O, Fut>>::get_mock_id(self);
 
         if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
             let with: Rc<Box<dyn FnMut() -> O + 'static>> = unsafe { transmute(with) };
-            Rc::into_inner(with).map(|mut f| f())
+            Rc::into_inner(with)
+                .map(|mut f| f())
+                .expect("mock should exist")
         } else {
-            None
+            panic!("mock should exist")
         }
     }
 }
@@ -313,14 +324,14 @@ macro_rules! impl_mock_call {
             for F
         {
             #[allow(non_snake_case)]
-            fn call_mock(&self, ($($T,)*): ($($T,)*)) -> Option<O> {
+            fn call_mock(&self, ($($T,)*): ($($T,)*)) -> O {
                 let id = <Self as CallMock<($($T,)*), O, NotFuture>>::get_mock_id(self);
 
                 if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
                     let with: Rc<Box<dyn FnMut($($T),*) -> O + 'static>> = unsafe { transmute(with) };
-                    Rc::into_inner(with).map(|mut f| f($($T),*))
+                    Rc::into_inner(with).map(|mut f| f($($T),*)).expect("mock should exist")
                 } else {
-                    None
+                    panic!("mock should exist")
                 }
             }
         }
@@ -350,14 +361,14 @@ macro_rules! impl_mock_async_call {
             for F
         {
             #[allow(non_snake_case)]
-            fn call_mock(&self, ($($T,)*): ($($T,)*)) -> Option<O> {
+            fn call_mock(&self, ($($T,)*): ($($T,)*)) -> O {
                 let id = <Self as CallMock<($($T,)*), O, Fut>>::get_mock_id(self);
 
                 if let Some(MockReturn(with)) = MOCK_STORE.with(|mock_store| mock_store.get(id)) {
                     let with: Rc<Box<dyn FnMut($($T),*) -> O + 'static>> = unsafe { transmute(with) };
-                    Rc::into_inner(with).map(|mut f| f($($T),*))
+                    Rc::into_inner(with).map(|mut f| f($($T),*)).expect("mock should exist")
                 } else {
-                    None
+                    panic!("mock should exist")
                 }
             }
         }

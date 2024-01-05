@@ -92,12 +92,18 @@ fn inject_impl(input: ParseStream, attrs: Vec<Attribute>) -> Result<Item> {
                 }
             });
 
+            let ret = if let syn::ReturnType::Type(_, ty) = &method.sig.output {
+                quote!(#ty)
+            } else {
+                quote!(())
+            };
+
             let mut stms = syn::parse2::<Block>(quote!({
                 {
                     use mockem::CallMock;
 
-                    if let Some(ret) = #self_type :: #name #generics .call_mock((#(#args,)*)) {
-                        return ret;
+                    if #self_type :: #name #generics .mock_exists(core::marker::PhantomData::<#ret>) {
+                        return #self_type :: #name #generics .call_mock((#(#args,)*));
                     }
                 }
             }))?
@@ -157,12 +163,18 @@ fn inject_trait(
                     }
                 });
 
+                let ret = if let syn::ReturnType::Type(_, ty) = &method.sig.output {
+                    quote!(#ty)
+                } else {
+                    quote!(())
+                };
+
                 let mut stms = syn::parse2::<Block>(quote!({
                     {
                         use mockem::CallMock;
 
-                        if let Some(ret) = <Self as #trait_name> :: #name #generics .call_mock((#(#args,)*)) {
-                            return ret;
+                        if <Self as #trait_name> :: #name #generics .mock_exists(core::marker::PhantomData::<#ret>) {
+                            return <Self as #trait_name> :: #name #generics .call_mock((#(#args,)*));
                         }
                     }
                 }))?
@@ -201,12 +213,18 @@ fn inject_fn(
         }
     });
 
+    let ret = if let syn::ReturnType::Type(_, ty) = &item.sig.output {
+        quote!(#ty)
+    } else {
+        quote!(())
+    };
+
     let mut stms = syn::parse2::<Block>(quote!({
         {
             use mockem::CallMock;
 
-            if let Some(ret) = #name .call_mock((#(#args,)*)) {
-                return ret;
+            if  #name .mock_exists(core::marker::PhantomData::<#ret>) {
+                return #name .call_mock((#(#args,)*));
             }
         }
     }))?

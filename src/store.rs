@@ -25,6 +25,10 @@ impl MockStore {
         self.mocks.borrow_mut().insert(id, vec![value].into());
     }
 
+    pub(crate) fn mock_exists(&self, id: TypeId) -> bool {
+        self.mocks.borrow().contains_key(&id)
+    }
+
     pub(crate) fn get(&self, id: TypeId) -> Option<MockReturn> {
         self.mocks
             .borrow_mut()
