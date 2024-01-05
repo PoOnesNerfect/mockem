@@ -231,12 +231,7 @@ pub struct NotFuture;
 
 impl<O, W: FnMut() -> O + 'static, F: Fn() -> O> MockCall<(), O, W, NotFuture> for F {
     fn mock_once(&self, with: W) {
-        let erased: Box<dyn FnMut() -> O + 'static> = Box::new(with);
-        let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
-
-        MOCK_STORE.with(|mock_store| {
-            mock_store.add(self.get_mock_id(), MockReturn(transmuted, Some(1)));
-        });
+        self.mock_repeat(Some(1), with)
     }
 
     fn mock_repeat(&self, repeat: Option<usize>, with: W) {
@@ -285,15 +280,7 @@ impl<O, W: FnMut() -> O + 'static, F: Fn() -> Fut + 'static, Fut: Future<Output 
     MockCall<(), O, W, Fut> for F
 {
     fn mock_once(&self, f: W) {
-        let erased: Box<dyn FnMut() -> O + 'static> = Box::new(f);
-        let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
-
-        MOCK_STORE.with(|mock_store| {
-            mock_store.add(
-                <Self as CallMock<(), O, Fut>>::get_mock_id(self),
-                MockReturn(transmuted, Some(1)),
-            );
-        });
+        self.mock_repeat(Some(1), f)
     }
 
     fn mock_repeat(&self, repeat: Option<usize>, with: W) {
@@ -370,15 +357,7 @@ macro_rules! impl_mock_call {
             for F
         {
             fn mock_once(&self, f: W) {
-                let erased: Box<dyn FnMut($($T),*) -> O + 'static> = Box::new(f);
-                let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
-
-                MOCK_STORE.with(|mock_store| {
-                    mock_store.add(
-                        <Self as CallMock<($($T,)*), O, NotFuture>>::get_mock_id(self),
-                        MockReturn(transmuted, Some(1)),
-                    );
-                });
+                self.mock_repeat(Some(1), f)
             }
 
             fn mock_repeat(&self, repeat: Option<usize>, with: W) {
@@ -443,15 +422,7 @@ macro_rules! impl_mock_async_call {
             for F
         {
             fn mock_once(&self, f: W) {
-                let erased: Box<dyn FnMut($($T),*) -> O + 'static> = Box::new(f);
-                let transmuted: Rc<Box<dyn FnMut() -> ()>> = unsafe { transmute(Rc::new(erased)) };
-
-                MOCK_STORE.with(|mock_store| {
-                    mock_store.add(
-                        <Self as CallMock<($($T,)*), O, Fut>>::get_mock_id(self),
-                        MockReturn(transmuted, Some(1)),
-                    );
-                });
+                self.mock_repeat(Some(1), f)
             }
 
             fn mock_repeat(&self, repeat: Option<usize>, with: W) {
